@@ -7,5 +7,5 @@ cd "$(dirname "$0")/.."
   test_active_offboard_setpoint_sender.py test_offboard_authority.py \
   test_offboard_abort_conditions.py test_emergency_supervisor.py \
   test_worker_liveness_watchdog.py test_mission_ui_contract.py \
-  test_mavlink_attitude_bridge.py \
+  test_mavlink_attitude_bridge.py test_sitl_smoke.py \
   test_two_uav_trajectory_flight.py test_two_uav_mission_circle_flight.py

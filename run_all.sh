@@ -4,6 +4,7 @@
 # Start the complete Swarm Dashboard stack from one terminal.
 # Usage:
 #   ./run_all.sh          Start everything and keep supervising it.
+#   ./run_all.sh --smoke  Check two stock PX4 SITL telemetry streams, then stop.
 #   ./run_all.sh --check  Validate the local installation without starting it.
 #   ./run_all.sh --reap   Stop a previous stack, then exit.  Deliberately not
 #                         automatic: a stale process and a running flight look
@@ -15,21 +16,21 @@ set -Eeuo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 mode="${1:-start}"
 
-if [[ "${mode}" != "start" && "${mode}" != "--check" && "${mode}" != "--reap" ]]; then
-  echo "Usage: $0 [--check|--reap]" >&2
+if [[ "${mode}" != "start" && "${mode}" != "--check" && "${mode}" != "--smoke" && "${mode}" != "--reap" ]]; then
+  echo "Usage: $0 [--check|--smoke|--reap]" >&2
   exit 2
 fi
 
 # Load local settings or the portable example, followed by an optional profile.
 set -a
-if [[ -f "${script_dir}/.env" ]]; then
+if [[ "${mode}" != "--smoke" && -f "${script_dir}/.env" ]]; then
   # shellcheck disable=SC1091
   source "${script_dir}/.env"
 else
   # shellcheck disable=SC1091
   source "${script_dir}/.env.example"
 fi
-if [[ -n "${SWARM_ENV_OVERRIDE_FILE:-}" ]]; then
+if [[ "${mode}" != "--smoke" && -n "${SWARM_ENV_OVERRIDE_FILE:-}" ]]; then
   env_override_file="${SWARM_ENV_OVERRIDE_FILE}"
   if [[ "${env_override_file}" != /* ]]; then
     env_override_file="${script_dir}/${env_override_file}"
@@ -70,8 +71,6 @@ gz_gui_config="${SWARM_GZ_GUI_CONFIG-}"
 gz_model_root="${SWARM_GZ_MODEL_ROOT:-${PX4_AUTOPILOT_ROOT}/Tools/simulation/gz/models}"
 px4_sys_autostart="${SWARM_PX4_SYS_AUTOSTART:-22000}"
 px4_sim_model="${SWARM_PX4_SIM_MODEL:-gz_x500_custom}"
-gz_model_name="${px4_sim_model#gz_}"
-px4_airframe="${PX4_AUTOPILOT_ROOT}/build/px4_sitl_default/etc/init.d-posix/airframes/${px4_sys_autostart}_${px4_sim_model}"
 uav_01_model_pose="${SWARM_UAV_01_MODEL_POSE:-0,0,0,0,0,0}"
 # 60 m west, on the follower's own approach axis to its slot. The old
 # default was 6 m north of the leader with a slot 10 m west -- a
@@ -80,6 +79,27 @@ uav_01_model_pose="${SWARM_UAV_01_MODEL_POSE:-0,0,0,0,0,0}"
 # infeasible. Along-axis, the closest approach is the slot itself.
 uav_02_model_pose="${SWARM_UAV_02_MODEL_POSE:--60,0,0,0,0,0}"
 
+mqtt_port=1883
+if [[ "${mode}" == "--smoke" ]]; then
+  # Start from the example config and use only the upstream simulation assets.
+  px4_sys_autostart=4001
+  px4_sim_model=gz_x500
+  gz_model_root="${PX4_AUTOPILOT_ROOT}/Tools/simulation/gz/models"
+  gz_world="${PX4_AUTOPILOT_ROOT}/Tools/simulation/gz/worlds/default.sdf"
+  gz_gui_config=""
+  start_xrce=true
+  start_ros_telemetry=true
+  start_web_backend=true
+  start_mavlink_bridge=false
+  start_gazebo_gui=false
+  export SWARM_START_ROS_TELEMETRY=true
+  export SWARM_GAZEBO_MODEL_UAV_01=x500_0 SWARM_GAZEBO_MODEL_UAV_02=x500_1
+  mqtt_port=18883
+  export SWARM_DASHBOARD_MQTT_PORT="${mqtt_port}"
+fi
+
+gz_model_name="${px4_sim_model#gz_}"
+px4_airframe="${PX4_AUTOPILOT_ROOT}/build/px4_sitl_default/etc/init.d-posix/airframes/${px4_sys_autostart}_${px4_sim_model}"
 export PX4_AUTOPILOT_ROOT SWARM_ROS_SETUP SWARM_TRACKING_PACKAGE_ROOT
 export GZ_SIM_RESOURCE_PATH="${gz_model_root}:${GZ_SIM_RESOURCE_PATH:-}"
 
@@ -172,6 +192,9 @@ require_file "${script_dir}/mavlink_manual_bridge.py"
 require_file "${script_dir}/static/index.html"
 require_file "${script_dir}/isolated_swarm.launch.py"
 require_file "${script_dir}/bounded_log_writer.py"
+if [[ "${mode}" == "--smoke" ]]; then
+  require_file "${script_dir}/scripts/check_sitl_telemetry.py"
+fi
 require_file "${gz_env}"
 require_file "${gz_world}"
 [[ -n "${gz_gui_config}" ]] && require_file "${gz_gui_config}"
@@ -184,11 +207,19 @@ require_executable "${px4_param_bin}"
 if [[ ! "${start_ros_telemetry,,}" =~ ^(0|false|no|off)$ ]]; then
   require_file "${SWARM_ROS_SETUP}"
   if [[ -f "${SWARM_ROS_SETUP}" ]]; then
-    if bash -c 'source "$1" && share="$(ros2 pkg prefix --share swarm_telemetry)" &&
-      test -f "${share}/launch/two_uav_nodes.launch.py"' _ "${SWARM_ROS_SETUP}"; then
+    if bash -c '
+      source "$1" || exit
+      prefix="$(ros2 pkg prefix swarm_telemetry)" || exit
+      if [[ "$2" == "--smoke" ]]; then
+        test -x "${prefix}/lib/swarm_telemetry/telemetry_node" &&
+          test -x "${prefix}/lib/swarm_telemetry/mqtt_bridge"
+      else
+        test -f "${prefix}/share/swarm_telemetry/launch/two_uav_nodes.launch.py"
+      fi
+    ' _ "${SWARM_ROS_SETUP}" "${mode}"; then
       echo "  [OK] ROS package: swarm_telemetry"
     else
-      echo "  [MISSING] swarm_telemetry and two_uav_nodes.launch.py in the sourced ROS workspace." >&2
+      echo "  [MISSING] swarm_telemetry and its runtime entry points in the sourced ROS workspace." >&2
       errors=$((errors + 1))
     fi
   fi
@@ -226,6 +257,11 @@ done
 
 run_stamp="$(date +%Y%m%d_%H%M%S)"
 log_dir="${SWARM_LOG_DIR:-${script_dir}/artifacts/run_${run_stamp}}"
+if [[ "${mode}" == "--smoke" ]]; then
+  log_dir="$(mktemp -d "${TMPDIR:-/tmp}/swarm-sitl-smoke.XXXXXX")"
+  export ROS_LOG_DIR="${log_dir}/ros"
+  export GZ_PARTITION="swarm-sitl-smoke-$$"
+fi
 mkdir -p "${log_dir}"
 
 declare -a child_pids=()
@@ -408,12 +444,23 @@ cleanup() {
   exit "${exit_code}"
 }
 
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 echo "Starting Swarm Dashboard stack..."
 echo "Logs: ${log_dir}"
 
-if pgrep -x mosquitto >/dev/null 2>&1; then
+if [[ "${mode}" == "--smoke" ]]; then
+  for port in "${mqtt_port}" 8000; do
+    if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then
+      echo "Smoke test port ${port} is already in use." >&2
+      exit 1
+    fi
+  done
+  printf 'listener %s 127.0.0.1\nallow_anonymous true\n' "${mqtt_port}" > "${log_dir}/mosquitto.conf"
+  start_process mqtt mosquitto -c "${log_dir}/mosquitto.conf"
+elif pgrep -x mosquitto >/dev/null 2>&1; then
   echo "  mqtt               reusing the running Mosquitto broker"
 else
   start_process mqtt mosquitto -v
@@ -421,7 +468,7 @@ else
   sleep 0.5
   assert_alive "${mqtt_pid}"
 fi
-wait_for_tcp 127.0.0.1 1883 10 "MQTT broker"
+wait_for_tcp 127.0.0.1 "${mqtt_port}" 10 "MQTT broker"
 
 if [[ ! "${start_xrce,,}" =~ ^(0|false|no|off)$ ]]; then
   start_process xrce MicroXRCEAgent udp4 -p 8888
@@ -455,46 +502,42 @@ else
   echo "  gazebo_gui         disabled by SWARM_START_GAZEBO_GUI"
 fi
 
-start_process px4_uav_01 bash -c '
-  set -euo pipefail
-  if [[ -f /opt/ros/jazzy/setup.bash ]]; then
-    set +u
-    source /opt/ros/jazzy/setup.bash
-    set -u
+start_px4_instance() {
+  local instance="$1"
+  local pose="$2"
+  local work_dir=""
+  if [[ "${mode}" == "--smoke" ]]; then
+    work_dir="${log_dir}/px4-${instance}"
+    mkdir "${work_dir}"
   fi
-  source "$1"
-  cd "$2"
-  export PX4_SYS_AUTOSTART="$5"
-  export PX4_SIM_MODEL="$6"
-  export PX4_GZ_STANDALONE=1
-  export PX4_GZ_MODEL_POSE="$4"
-  exec "$3" -i 0
-' _ "${gz_env}" "${PX4_AUTOPILOT_ROOT}" "${px4_bin}" \
-  "${uav_01_model_pose}" "${px4_sys_autostart}" "${px4_sim_model}"
-px4_uav_01_pid="${child_pids[-1]}"
+  start_process "px4_uav_0$((instance + 1))" bash -c '
+    set -euo pipefail
+    if [[ -f /opt/ros/jazzy/setup.bash ]]; then
+      set +u
+      source /opt/ros/jazzy/setup.bash
+      set -u
+    fi
+    source "$1"
+    cd "$2"
+    export PX4_GZ_MODEL_POSE="$4" PX4_SYS_AUTOSTART="$5" PX4_SIM_MODEL="$6"
+    export PX4_GZ_STANDALONE=1
+    if [[ -n "$8" ]]; then
+      exec "$3" -i "$7" -d -w "$8" "$2/build/px4_sitl_default/etc"
+    fi
+    exec "$3" -i "$7"
+  ' _ "${gz_env}" "${PX4_AUTOPILOT_ROOT}" "${px4_bin}" \
+    "${pose}" "${px4_sys_autostart}" "${px4_sim_model}" "${instance}" "${work_dir}"
+}
 
-start_process px4_uav_02 bash -c '
-  set -euo pipefail
-  if [[ -f /opt/ros/jazzy/setup.bash ]]; then
-    set +u
-    source /opt/ros/jazzy/setup.bash
-    set -u
-  fi
-  source "$1"
-  cd "$2"
-  export PX4_SYS_AUTOSTART="$5"
-  export PX4_SIM_MODEL="$6"
-  export PX4_GZ_STANDALONE=1
-  export PX4_GZ_MODEL_POSE="$4"
-  exec "$3" -i 1
-' _ "${gz_env}" "${PX4_AUTOPILOT_ROOT}" "${px4_bin}" \
-  "${uav_02_model_pose}" "${px4_sys_autostart}" "${px4_sim_model}"
+start_px4_instance 0 "${uav_01_model_pose}"
+px4_uav_01_pid="${child_pids[-1]}"
+start_px4_instance 1 "${uav_02_model_pose}"
 px4_uav_02_pid="${child_pids[-1]}"
 sleep 2
 assert_alive "${px4_uav_01_pid}"
 assert_alive "${px4_uav_02_pid}"
 
-if [[ -n "${SWARM_PX4_MPC_XY_VEL_MAX:-}" ]]; then
+if [[ "${mode}" != "--smoke" && -n "${SWARM_PX4_MPC_XY_VEL_MAX:-}" ]]; then
   for instance in 0 1; do
     px4_param_deadline=$((SECONDS + 30))
     until "${px4_param_bin}" --instance "${instance}" show -q \
@@ -522,8 +565,11 @@ if [[ ! "${start_ros_telemetry,,}" =~ ^(0|false|no|off)$ ]]; then
   source "$1"
   set -u
   export ROS_LOCALHOST_ONLY=1
+  if [[ "$2" == "--smoke" ]]; then
+    exec ros2 launch "$3" telemetry_only:=true mqtt_port:="$4"
+  fi
   exec ros2 launch swarm_telemetry two_uav_nodes.launch.py
-' _ "${SWARM_ROS_SETUP}"
+' _ "${SWARM_ROS_SETUP}" "${mode}" "${script_dir}/isolated_swarm.launch.py" "${mqtt_port}"
   ros_telemetry_pid="${child_pids[-1]}"
   sleep 2
   assert_alive "${ros_telemetry_pid}"
@@ -546,6 +592,11 @@ if [[ ! "${start_web_backend,,}" =~ ^(0|false|no|off)$ ]]; then
   web_backend_pid="${child_pids[-1]}"
   sleep 0.5
   assert_alive "${web_backend_pid}"
+
+  if [[ "${mode}" == "--smoke" ]]; then
+    "${python_bin}" "${script_dir}/scripts/check_sitl_telemetry.py" "${log_dir}/smoke.json"
+    exit 0
+  fi
 
   if ! wait_for_http "http://127.0.0.1:8000/readyz" 30; then
     show_log_tail web_backend

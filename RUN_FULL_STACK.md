@@ -9,6 +9,8 @@ Cài môi trường Python, cấu hình PX4 và ROS theo [quickstart](README.md#
 
 Launcher mở Gazebo, hai PX4 SITL, bridge và dashboard theo `.env`. Nếu muốn dùng Gazebo headless, đặt `SWARM_START_GAZEBO_GUI=false`. Không mở stack thứ hai song song trên cùng các cổng điều khiển.
 
+Để kiểm tra nhanh đầu vào telemetry với model X500 chuẩn, dùng `./run_all.sh --smoke`. [Điều kiện và báo cáo smoke test](docs/benchmarks/sitl/README.md)
+
 ## Tách tiến trình để chẩn đoán
 
 Sau khi Mosquitto, Gazebo và PX4 SITL đã chạy, nạp cấu hình trong mỗi terminal chạy thành phần riêng.

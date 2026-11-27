@@ -1,0 +1,22 @@
+{
+  "verdict": "PASS",
+  "drones": {
+    "UAV-01": {
+      "system_id": 1,
+      "online": true,
+      "armed": false,
+      "telemetry_fresh": true,
+      "position_available": true,
+      "identity_matches": true
+    },
+    "UAV-02": {
+      "system_id": 2,
+      "online": true,
+      "armed": false,
+      "telemetry_fresh": true,
+      "position_available": true,
+      "identity_matches": true
+    }
+  },
+  "profile": "stock_x500"
+}

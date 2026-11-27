@@ -10,6 +10,8 @@ Dashboard thử nghiệm cho hai PX4 SITL trong Gazebo. FastAPI nhận telemetry
 
 ## Chạy từ bản clone
 
+Dùng `./run_all.sh --smoke` để kiểm tra pipeline telemetry hai UAV với X500 chuẩn. [Quickstart smoke test và kết quả](docs/benchmarks/sitl/README.md)
+
 Dùng Linux với Python 3.12, ROS 2 Jazzy, Gazebo Harmonic, Mosquitto và Micro XRCE-DDS Agent. Cần hai workspace ngoài repo.
 
 | Workspace | Thành phần cần có |

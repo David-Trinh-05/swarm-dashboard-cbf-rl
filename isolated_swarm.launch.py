@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 
 from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.conditions import UnlessCondition
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 UAVS = [
@@ -22,7 +26,12 @@ UAVS = [
 ]
 
 def generate_launch_description() -> LaunchDescription:
-    actions = []
+    actions = [
+        DeclareLaunchArgument("telemetry_only", default_value="false"),
+        DeclareLaunchArgument("mqtt_port", default_value="1883"),
+    ]
+    broker_port = ParameterValue(LaunchConfiguration("mqtt_port"), value_type=int)
+
 
     for uav in UAVS:
         actions.append(
@@ -50,7 +59,7 @@ def generate_launch_description() -> LaunchDescription:
                     {
                         "drone_id": uav["drone_id"],
                         "broker_host": "127.0.0.1",
-                        "broker_port": 1883,
+                        "broker_port": broker_port,
                         "ros_topic": uav["ros_topic"],
                         "mqtt_topic": uav["mqtt_topic"],
                     }
@@ -63,6 +72,7 @@ def generate_launch_description() -> LaunchDescription:
             package="swarm_telemetry",
             executable="web_control_node",
             name="web_control_node",
+            condition=UnlessCondition(LaunchConfiguration("telemetry_only")),
             output="screen",
         )
     )

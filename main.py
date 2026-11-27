@@ -102,7 +102,7 @@ except ImportError as error:
 # ============================================================
 
 MQTT_HOST = "127.0.0.1"
-MQTT_PORT = 1883
+MQTT_PORT = int(os.environ.get("SWARM_DASHBOARD_MQTT_PORT", "1883"))
 MQTT_CLIENT_ID = os.environ.get(
     "SWARM_DASHBOARD_MQTT_CLIENT_ID",
     f"swarm-dashboard-backend-{os.getpid()}",
