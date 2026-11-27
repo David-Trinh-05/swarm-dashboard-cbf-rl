@@ -339,11 +339,7 @@ mavlink_manual_bridge.py
 static/index.html
 ```
 
-File giải thích kỹ thuật:
-
-```text
-PROJECT_EXPLANATION.md
-```
+Kiến trúc và cách chạy hiện tại nằm trong [README](../../README.md).
 
 File báo cáo này:
 
