@@ -257,7 +257,7 @@ Mở terminal thứ nhất:
 ```bash
 cd /home/sup/swarm_dashboard
 source .venv/bin/activate
-python -m uvicorn main:app --host 0.0.0.0 --port 8000
+python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
 ### 7.2. Chạy MAVLink manual bridge

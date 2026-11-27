@@ -443,7 +443,7 @@ cd /home/sup/swarm_dashboard
 ```bash
 cd /home/sup/swarm_dashboard
 source .venv/bin/activate
-python -m uvicorn main:app --host 0.0.0.0 --port 8000
+python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
 5. MAVLink bridge:

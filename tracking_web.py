@@ -38,7 +38,7 @@ SYSTEM_DIST_PACKAGES = Path("/usr/lib/python3/dist-packages")
 REQUESTED_TRACKING_PACKAGE_ROOT = Path(
     os.environ.get(
         "SWARM_TRACKING_PACKAGE_ROOT",
-        "/home/sup/ws_px4/src/lfc_gimbal_gazebo",
+        str(Path.home() / "ws_px4/src/lfc_gimbal_gazebo"),
     )
 )
 

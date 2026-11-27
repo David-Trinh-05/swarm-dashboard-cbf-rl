@@ -31,7 +31,7 @@ if (
 
 import paho.mqtt.client as mqtt
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from body_attitude_recenter import BodyAttitudeRecenterController
@@ -43,6 +43,7 @@ from cbf_command_gate import (
     cbf_covariance_sigma,
     cbf_position_covariance_required,
 )
+from dashboard_access import DashboardAccess
 from formation_controller import (
     DeterministicFormationController,
     FormationConfig,
@@ -3885,9 +3886,8 @@ def on_mqtt_message(
         elif topic.endswith(
             "/telemetry/state"
         ):
-            latest_drones[drone_id] = (
-                payload
-            )
+            payload["dashboard_retained"] = bool(getattr(message, "retain", False))
+            latest_drones[drone_id] = payload
             if not _test_telemetry_ingest_blocked(drone_id):
                 swarm_state_store.ingest(
                     drone_id,
@@ -3970,6 +3970,11 @@ async def lifespan(
 app = FastAPI(
     title="Swarm UAV Dashboard",
     lifespan=lifespan,
+)
+app.add_middleware(
+    DashboardAccess,
+    remote_origin=os.environ.get("SWARM_WEB_ORIGIN", ""),
+    password=os.environ.get("SWARM_WEB_PASSWORD", ""),
 )
 
 
@@ -4151,6 +4156,32 @@ async def health() -> dict[str, Any]:
         "swarm_state_origin_configured": SWARM_ENU_ORIGIN is not None,
         "server_timestamp_ms": now_ms(),
     }
+
+
+@app.get("/readyz")
+async def readiness() -> JSONResponse:
+    now = time.monotonic()
+    with state_lock:
+        telemetry = {}
+        for drone in sorted(ALLOWED_DRONES):
+            sample = latest_drones.get(drone, {})
+            received = sample.get("dashboard_received_monotonic_s", -math.inf)
+            telemetry[drone] = not sample.get("dashboard_retained", False) and now - received <= 3.0
+    requires_telemetry = os.environ.get("SWARM_START_ROS_TELEMETRY", "true").lower() not in {
+        "0", "false", "no", "off",
+    }
+    mqtt_ready = mqtt_connected.is_set()
+    frontend_ready = INDEX_FILE.is_file()
+    ready = mqtt_ready and frontend_ready and (not requires_telemetry or all(telemetry.values()))
+    return JSONResponse(
+        status_code=200 if ready else 503,
+        content={
+            "ok": ready,
+            "mqtt_connected": mqtt_ready,
+            "index_exists": frontend_ready,
+            "telemetry_fresh": telemetry,
+        },
+    )
 
 
 @app.get("/api/camera/{drone_id}/stream")

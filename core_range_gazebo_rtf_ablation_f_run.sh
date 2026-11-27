@@ -43,7 +43,7 @@ stop_backend() {
 start_backend() {
   local rep_index="$1"
   env -u PYTHONPATH SWARM_START_GAZEBO_GUI=false SWARM_CAMERA_TRACE_JSONL="${output_root}/camera_source_trace.jsonl" \
-    "${script_dir}/.venv/bin/python" -m uvicorn main:app --app-dir "${script_dir}" --host 0.0.0.0 --port 8000 \
+    "${script_dir}/.venv/bin/python" -m uvicorn main:app --app-dir "${script_dir}" --host 127.0.0.1 --port 8000 \
     >"${output_root}/backend_rep_${rep_index}.log" 2>&1 &
   backend_pid=$!
   local deadline=$((SECONDS + 30))

@@ -20,8 +20,7 @@ if [[ "${mode}" != "start" && "${mode}" != "--check" && "${mode}" != "--reap" ]]
   exit 2
 fi
 
-# A real .env takes precedence.  When it does not exist, load the project's
-# runtime defaults, then use the paths of the current development machine.
+# Load local settings or the portable example, followed by an optional profile.
 set -a
 if [[ -f "${script_dir}/.env" ]]; then
   # shellcheck disable=SC1091
@@ -29,9 +28,6 @@ if [[ -f "${script_dir}/.env" ]]; then
 else
   # shellcheck disable=SC1091
   source "${script_dir}/.env.example"
-  SWARM_TRACKING_PACKAGE_ROOT="/home/sup/ws_px4/src/lfc_gimbal_gazebo"
-  SWARM_ROS_SETUP="/home/sup/ws_px4/install/setup.bash"
-  PX4_AUTOPILOT_ROOT="/mnt/px4ssd/PX4-Autopilot"
 fi
 if [[ -n "${SWARM_ENV_OVERRIDE_FILE:-}" ]]; then
   env_override_file="${SWARM_ENV_OVERRIDE_FILE}"
@@ -47,9 +43,9 @@ if [[ -n "${SWARM_ENV_OVERRIDE_FILE:-}" ]]; then
 fi
 set +a
 
-PX4_AUTOPILOT_ROOT="${PX4_AUTOPILOT_ROOT:-/mnt/px4ssd/PX4-Autopilot}"
-SWARM_ROS_SETUP="${SWARM_ROS_SETUP:-/home/sup/ws_px4/install/setup.bash}"
-SWARM_TRACKING_PACKAGE_ROOT="${SWARM_TRACKING_PACKAGE_ROOT:-/home/sup/ws_px4/src/lfc_gimbal_gazebo}"
+PX4_AUTOPILOT_ROOT="${PX4_AUTOPILOT_ROOT:-$HOME/PX4-Autopilot}"
+SWARM_ROS_SETUP="${SWARM_ROS_SETUP:-$HOME/ws_px4/install/setup.bash}"
+SWARM_TRACKING_PACKAGE_ROOT="${SWARM_TRACKING_PACKAGE_ROOT:-$HOME/ws_px4/src/lfc_gimbal_gazebo}"
 python_bin="${SWARM_PYTHON_BIN:-${script_dir}/.venv/bin/python}"
 runtime_log_max_bytes="${SWARM_RUNTIME_LOG_MAX_BYTES:-8388608}"
 runtime_logging_enabled="${SWARM_RUNTIME_LOGGING_ENABLED:-true}"
@@ -72,7 +68,7 @@ gz_world="${SWARM_GZ_WORLD_SDF:-${PX4_AUTOPILOT_ROOT}/Tools/simulation/gz/worlds
 # start_gazebo_optimized.sh still uses that file directly.
 gz_gui_config="${SWARM_GZ_GUI_CONFIG-}"
 gz_model_root="${SWARM_GZ_MODEL_ROOT:-${PX4_AUTOPILOT_ROOT}/Tools/simulation/gz/models}"
-px4_sys_autostart="${SWARM_PX4_SYS_AUTOSTART:-4020}"
+px4_sys_autostart="${SWARM_PX4_SYS_AUTOSTART:-22000}"
 px4_sim_model="${SWARM_PX4_SIM_MODEL:-gz_x500_custom}"
 gz_model_name="${px4_sim_model#gz_}"
 px4_airframe="${PX4_AUTOPILOT_ROOT}/build/px4_sitl_default/etc/init.d-posix/airframes/${px4_sys_autostart}_${px4_sim_model}"
@@ -166,9 +162,10 @@ echo "Checking Swarm Dashboard runtime..."
 require_command pgrep
 require_command setsid
 require_command mosquitto
-require_command MicroXRCEAgent
+if [[ ! "${start_xrce,,}" =~ ^(0|false|no|off)$ ]]; then
+  require_command MicroXRCEAgent
+fi
 require_command gz
-require_command ros2
 require_command curl
 require_file "${script_dir}/main.py"
 require_file "${script_dir}/mavlink_manual_bridge.py"
@@ -180,10 +177,33 @@ require_file "${gz_world}"
 [[ -n "${gz_gui_config}" ]] && require_file "${gz_gui_config}"
 require_file "${gz_model_root}/${gz_model_name}/model.sdf"
 require_file "${px4_airframe}"
-require_file "${SWARM_ROS_SETUP}"
 require_executable "${python_bin}"
 require_executable "${px4_bin}"
 require_executable "${px4_param_bin}"
+
+if [[ ! "${start_ros_telemetry,,}" =~ ^(0|false|no|off)$ ]]; then
+  require_file "${SWARM_ROS_SETUP}"
+  if [[ -f "${SWARM_ROS_SETUP}" ]]; then
+    if bash -c 'source "$1" && share="$(ros2 pkg prefix --share swarm_telemetry)" &&
+      test -f "${share}/launch/two_uav_nodes.launch.py"' _ "${SWARM_ROS_SETUP}"; then
+      echo "  [OK] ROS package: swarm_telemetry"
+    else
+      echo "  [MISSING] swarm_telemetry and two_uav_nodes.launch.py in the sourced ROS workspace." >&2
+      errors=$((errors + 1))
+    fi
+  fi
+fi
+
+if [[ -x "${python_bin}" && ! "${start_web_backend,,}" =~ ^(0|false|no|off)$ ]]; then
+  if "${python_bin}" -c 'from uvicorn.protocols.websockets.auto import AutoWebSocketsProtocol
+import fastapi, websockets
+raise SystemExit(AutoWebSocketsProtocol is None)'; then
+    echo "  [OK] Python dashboard and WebSocket transport"
+  else
+    echo "  [MISSING] Dashboard Python dependencies. Install requirements.txt in the configured venv." >&2
+    errors=$((errors + 1))
+  fi
+fi
 
 if [[ ${errors} -ne 0 ]]; then
   echo "Runtime check failed with ${errors} missing item(s)." >&2
@@ -522,12 +542,12 @@ fi
 
 if [[ ! "${start_web_backend,,}" =~ ^(0|false|no|off)$ ]]; then
   start_process web_backend "${python_bin}" -m uvicorn main:app \
-    --app-dir "${script_dir}" --host 0.0.0.0 --port 8000
+    --app-dir "${script_dir}" --host 127.0.0.1 --port 8000
   web_backend_pid="${child_pids[-1]}"
   sleep 0.5
   assert_alive "${web_backend_pid}"
 
-  if ! wait_for_http "http://127.0.0.1:8000/health" 30; then
+  if ! wait_for_http "http://127.0.0.1:8000/readyz" 30; then
     show_log_tail web_backend
     exit 1
   fi

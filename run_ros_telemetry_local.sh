@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ros_setup="${SWARM_ROS_SETUP:-/home/sup/ws_px4/install/setup.bash}"
+ros_setup="${SWARM_ROS_SETUP:-$HOME/ws_px4/install/setup.bash}"
 
 if [[ ! -f "${ros_setup}" ]]; then
   echo "ROS setup file not found: ${ros_setup}" >&2

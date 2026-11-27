@@ -3,7 +3,7 @@
 set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-gazebo_px4_root="${PX4_AUTOPILOT_ROOT:-/mnt/px4ssd/PX4-Autopilot}"
+gazebo_px4_root="${PX4_AUTOPILOT_ROOT:-$HOME/PX4-Autopilot}"
 gazebo_world="${gazebo_px4_root}/Tools/simulation/gz/worlds/default.sdf"
 gazebo_environment="${gazebo_px4_root}/build/px4_sitl_default/rootfs/gz_env.sh"
 gazebo_gui_config="${script_dir}/gazebo_gui_light.config"
