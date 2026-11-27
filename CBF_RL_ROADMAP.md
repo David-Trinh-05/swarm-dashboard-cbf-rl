@@ -21,7 +21,12 @@ alter CBF constants, or bypass missing/stale-state holds.
   2/s, command latency 0.65 s, covariance sigma 0.10, covariance required.
 - Runtime remains unchanged and RL remains disabled.
 
-## Gate status
+## Historical gate results
+
+These results describe the scenario sets and runtime revisions used at the time
+of each gate. The [current reproducible benchmark](docs/benchmarks/cbf-rl/README.md)
+uses five scenarios and records each policy's model hash and verdict. On that
+suite, `mission_v1` passes while `v1` and `v2` fail.
 
 1. `CBF_RL_OFFLINE_TRAINING_BASELINE`: **PASS**. Seeded dependency-free CEM
    trains the three-parameter proximity policy in `cbf_rl_policy_v1.json`.
@@ -113,11 +118,10 @@ alter CBF constants, or bypass missing/stale-state holds.
    The 15 m/s rung passes the same way at 10.045 m. Evidence:
    `artifacts/gate7_20ms.json`, `artifacts/leadfix_corridor_20ms_flight.json`.
 
-   Two operational notes this gate depends on. The evaluator has no run
-   splitting and reads a whole appended trace, so it must be pointed at one
-   isolated run or it will report an older flight's breach; the trace above is
-   the extracted final trajectory block. And the 20 m/s rung must be flown with
-   `SWARM_START_GAZEBO_GUI=false` -- own-state telemetry age peaks at 99.8 ms
+   The original evaluation used an extracted trajectory block. The current
+   evaluator requires matching run IDs and a flight time window, as described
+   in the [SITL evidence procedure](docs/benchmarks/cbf-rl/README.md#kiểm-tra-cặp-trace-và-báo-cáo-sitl).
+   Own-state telemetry age for the 20 m/s run peaked at 99.8 ms
    headless against a 100 ms staleness latch, and with the GUI it reaches
    100.1 ms and aborts the flight on a single dropped MAVLink message.
 

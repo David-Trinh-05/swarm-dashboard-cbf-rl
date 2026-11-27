@@ -32,6 +32,34 @@ def _distribution(values: Sequence[float]) -> dict[str, float]:
     }
 
 
+def _valid_time(value: Any) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and 0 <= value < math.inf
+    )
+
+
+def _windowed_trace(
+    rows: Sequence[dict[str, Any]], flight: dict[str, Any],
+) -> tuple[list[dict[str, Any]], str]:
+    run_id = flight.get("run_id")
+    start = flight.get("started_monotonic_s")
+    finish = flight.get("finished_monotonic_s")
+    if not isinstance(run_id, str) or not run_id.strip():
+        return [], "flight_run_id_missing"
+    if not _valid_time(start) or not _valid_time(finish) or start >= finish:
+        return [], "invalid_flight_window"
+    if not rows:
+        return [], "empty_trace"
+    if any(row.get("run_id") != run_id for row in rows):
+        return [], "trace_run_id_mismatch"
+    if any(not _valid_time(row.get("evaluated_monotonic_s")) for row in rows):
+        return [], "invalid_trace_timestamp"
+    selected = [row for row in rows if start <= row["evaluated_monotonic_s"] <= finish]
+    return (selected, "") if selected else ([], "no_trace_frames_in_flight_window")
+
+
 def evaluate(
     rows: Sequence[dict[str, Any]],
     flight: dict[str, Any],
@@ -42,6 +70,8 @@ def evaluate(
 ) -> dict[str, Any]:
     if expected_mode not in {"shadow", "active"}:
         raise ValueError("expected_mode must be shadow or active")
+    total_rows = len(rows)
+    rows, provenance_error = _windowed_trace(rows, flight)
     trajectory_flight = bool(
         flight.get("expected_trajectory_env") or flight.get("circle")
     )
@@ -66,7 +96,12 @@ def evaluate(
     }
     per_drone: dict[str, Any] = {}
     checks: dict[str, bool] = {
+        "trace_provenance": not provenance_error,
         "flight_pass": flight.get("verdict") == "FLIGHT_PASS",
+        "flight_matches_profile": (
+            flight.get("expected_rl_mode", expected_mode) == expected_mode
+            and flight.get("model_sha256", expected_model_sha256) == expected_model_sha256
+        ),
         "landed_and_disarmed": all(
             (final_state.get(drone) or {}).get("armed") is False
             for drone in DRONES
@@ -202,6 +237,12 @@ def evaluate(
         "mode": expected_mode,
         "verdict": "PASS" if passed else "FAIL",
         "expected_model_sha256": expected_model_sha256,
+        "provenance": {
+            "run_id": flight.get("run_id"),
+            "trace_rows": total_rows,
+            "in_flight_window": len(rows),
+            "error": provenance_error or None,
+        },
         "checks": checks,
         "per_drone": per_drone,
     }

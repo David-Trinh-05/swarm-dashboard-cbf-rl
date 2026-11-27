@@ -4,7 +4,8 @@ Dashboard thử nghiệm cho hai PX4 SITL trong Gazebo. FastAPI nhận telemetry
 
 - [Chạy stack và xử lý lỗi](RUN_FULL_STACK.md)
 - [RGB Follow Target](VISUAL_FOLLOW_TARGET.md)
-- [Roadmap và kết quả CBF-RL](CBF_RL_ROADMAP.md)
+- [Benchmark CBF-RL tái lập](docs/benchmarks/cbf-rl/README.md)
+- [Roadmap và kết quả CBF-RL trước đây](CBF_RL_ROADMAP.md)
 - [Tài liệu bàn giao cũ và các thử nghiệm UniDepth](docs/archive/README.md)
 
 ## Chạy từ bản clone
@@ -52,11 +53,14 @@ curl --fail-with-body http://127.0.0.1:8000/readyz
 
 ## Test offline
 
-Chạy từ thư mục repo sau khi cài phụ thuộc Python. Các bài test dưới đây không khởi động Gazebo, PX4 hay MQTT.
+Bộ test lõi chạy từ bản clone với Python 3.12, không cần `.env`, PX4, Gazebo, ROS 2, MQTT broker hay dataset nghiên cứu. Trên Ubuntu 24.04, OpenCV cần các gói hệ thống `libgl1` và `libglib2.0-0t64`.
 
 ```bash
-.venv/bin/python -m unittest -v test_dashboard_access
-.venv/bin/python -m compileall -q main.py dashboard_access.py mavlink_manual_bridge.py
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements-test.txt
+PYTHON=.venv/bin/python bash scripts/test-core.sh
 ```
 
-Các bài test replay và ML yêu cầu fixture hoặc dataset tương ứng và các gói trong `requirements-ml.txt`. Kết quả nghiên cứu cũ nằm trong [tài liệu](docs/).
+GitHub Actions chạy cùng lệnh khi mở hoặc cập nhật pull request và khi push lên `master`. [Workflow Offline checks](.github/workflows/offline.yml)
+
+Các bài test replay, SITL và ML sử dụng môi trường và dữ liệu tương ứng. Với ML, cài thêm `requirements-ml.txt` và chuẩn bị fixture hoặc dataset theo tài liệu từng thử nghiệm. [Tài liệu nghiên cứu](docs/)

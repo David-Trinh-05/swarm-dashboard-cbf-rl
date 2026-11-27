@@ -221,7 +221,7 @@ class IntendedFirstFlightConfigTests(unittest.TestCase):
     def test_repository_env_keeps_every_legacy_offboard_flag_off(self) -> None:
         from pathlib import Path
 
-        text = Path(".env").read_text(encoding="utf-8")
+        text = Path(__file__).with_name(".env.example").read_text(encoding="utf-8")
         for flag in LEGACY_WRITER_FLAGS:
             with self.subTest(flag=flag):
                 self.assertIn(f"{flag}=false", text)
@@ -230,7 +230,7 @@ class IntendedFirstFlightConfigTests(unittest.TestCase):
         from pathlib import Path
 
         line = [
-            l for l in Path(".env").read_text(encoding="utf-8").splitlines()
+            l for l in Path(__file__).with_name(".env.example").read_text(encoding="utf-8").splitlines()
             if l.startswith(f"{AUTHORITY_ENV_VAR}=")
         ]
         self.assertEqual(len(line), 1)

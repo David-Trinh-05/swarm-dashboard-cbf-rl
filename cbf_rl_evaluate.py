@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -119,8 +120,14 @@ def fault_evaluation(policy: ProximityCbfRlPolicy) -> dict[str, Any]:
     }
 
 
+def _load_model(model_path: str | Path) -> tuple[ProximityCbfRlPolicy, str]:
+    model_bytes = Path(model_path).read_bytes()
+    policy = ProximityCbfRlPolicy.from_dict(json.loads(model_bytes.decode("utf-8")))
+    return policy, hashlib.sha256(model_bytes).hexdigest()
+
+
 def run_gate(model_path: str | Path) -> dict[str, Any]:
-    policy = ProximityCbfRlPolicy.load(model_path)
+    policy, model_sha256 = _load_model(model_path)
     scenarios = evaluation_scenarios()
     learned_score, learned_runs = evaluate(policy, scenarios)
     baseline = ProximityCbfRlPolicy(
@@ -152,6 +159,7 @@ def run_gate(model_path: str | Path) -> dict[str, Any]:
         "milestone": "CBF_RL_OFFLINE_EVALUATION",
         "verdict": "PASS" if passed else "FAIL",
         "model": str(model_path),
+        "model_sha256": model_sha256,
         "learned": {"score": learned_score, "scenario_results": learned_runs},
         "goal_only_baseline": {
             "score": baseline_score,
@@ -162,7 +170,7 @@ def run_gate(model_path: str | Path) -> dict[str, Any]:
 
 
 def run_active_trajectory_gate(model_path: str | Path) -> dict[str, Any]:
-    policy = ProximityCbfRlPolicy.load(model_path)
+    policy, model_sha256 = _load_model(model_path)
     scenario = active_trajectory_scenario(policy)
     _, runs = evaluate(
         policy,
@@ -180,6 +188,7 @@ def run_active_trajectory_gate(model_path: str | Path) -> dict[str, Any]:
         "milestone": "CBF_RL_ACTIVE_TRAJECTORY_OFFLINE",
         "verdict": "PASS" if passed else "FAIL",
         "model": str(model_path),
+        "model_sha256": model_sha256,
         "maximum_steps": scenario.maximum_steps,
         "scenario_result": run,
     }

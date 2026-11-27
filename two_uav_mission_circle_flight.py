@@ -15,6 +15,7 @@ from typing import Any, Sequence
 
 import websockets
 
+from sitl_run import flight_metadata
 from trajectory_controller import ClosedPolylineTrajectory
 
 API_URL = "http://127.0.0.1:8000/api/drones"
@@ -674,6 +675,7 @@ def main() -> int:
     output.write_text(
         json.dumps(
             {
+                **flight_metadata(flight.started),
                 "verdict": verdict,
                 "expected_rl_mode": arguments.expected_rl_mode,
                 "model_sha256": arguments.model_sha256,

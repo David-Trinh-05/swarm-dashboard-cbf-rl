@@ -31,6 +31,7 @@ from offboard_authority import (
 )
 from offboard_setpoint_sender import ShadowOffboardSetpointSender
 from peer_state import DirectPeerStateTransport, PeerStateRegistry, make_peer_state, parse_endpoints
+from sitl_run import configured_run_id
 from swarm_state import GeodeticOrigin, geodetic_to_enu, ned_to_enu, ned_variance_to_enu
 from two_uav_active_readiness import is_authorized_for_two_uav_active_flight
 from worker_liveness_watchdog import WorkerLivenessSample, WorkerLivenessWatchdog
@@ -365,6 +366,7 @@ def companion_telemetry_ingest_blocked(drone_id: str) -> bool:
 # normal way to observe this bridge is the server's /api/drones, and the whole
 # point of running CBF here is to keep working when that server is gone.
 COMPANION_SAFETY_LOG_PATH = os.environ.get("SWARM_COMPANION_SAFETY_LOG", "").strip()
+COMPANION_SAFETY_RUN_ID = configured_run_id()
 
 # An iteration slower than this gets one WARNING naming where the time went.
 # Five real flights on 2026-08-11 hit 0.25-0.57 s iterations, which is past
@@ -2913,7 +2915,11 @@ class MavlinkWorker(threading.Thread):
             with open(COMPANION_SAFETY_LOG_PATH, "a", encoding="utf-8") as handle:
                 handle.write(
                     json.dumps(
-                        {"wall_clock_s": time.time(), **payload},
+                        {
+                            "wall_clock_s": time.time(),
+                            **payload,
+                            "run_id": COMPANION_SAFETY_RUN_ID,
+                        },
                         ensure_ascii=False,
                         separators=(",", ":"),
                     )

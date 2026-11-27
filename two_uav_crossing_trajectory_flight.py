@@ -223,6 +223,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from sitl_run import flight_metadata
 from two_uav_active_readiness import (
     FlightEnvelope,
     PX4_FACTS,
@@ -923,6 +924,7 @@ def main() -> int:
         final_state = {"error": str(error)}
         sender = {}
     result = {
+        **flight_metadata(flight.started),
         "verdict": verdict,
         "records": flight.records,
         "commands_issued": flight.commands,

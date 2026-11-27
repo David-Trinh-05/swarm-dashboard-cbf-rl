@@ -1,0 +1,16 @@
+{
+  "expected_rl_mode": "shadow",
+  "final_state": {
+    "UAV-01": {
+      "armed": false
+    },
+    "UAV-02": {
+      "armed": false
+    }
+  },
+  "finished_monotonic_s": 20.0,
+  "model_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "run_id": "synthetic-sitl-001",
+  "started_monotonic_s": 10.0,
+  "verdict": "FLIGHT_PASS"
+}
